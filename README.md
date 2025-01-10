@@ -1,4 +1,4 @@
-# RAT_Rust
+# Rattatui
 
 **Disclaimer:**
 
