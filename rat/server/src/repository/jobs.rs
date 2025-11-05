@@ -10,7 +10,7 @@ impl Repository {
             (id, encrypted_job, ephemeral_public_key, nonce, signature, agent_id)
             VALUES ($1, $2, $3, $4, $5, $6)";
 
-        match sqlx::query(QUERY)
+        sqlx::query(QUERY)
             .bind(job.id)
             .bind(&job.encrypted_job)
             .bind(&job.ephemeral_public_key)
@@ -19,13 +19,11 @@ impl Repository {
             .bind(job.agent_id)
             .execute(db)
             .await
-        {
-            Err(err) => {
+            .map_err(|err| {
                 error!("create_job: Inserting job: {}", &err);
-                Err(err.into())
-            }
-            Ok(_) => Ok(()),
-        }
+                err.into()
+            })?;
+        Ok(())
     }
 
     pub async fn update_job(&self, db: &Pool<Postgres>, job: &Job) -> Result<(), Error> {
@@ -34,7 +32,7 @@ impl Repository {
                 result_nonce = $3, result_signature = $4
             WHERE id = $5";
 
-        match sqlx::query(QUERY)
+        sqlx::query(QUERY)
             .bind(&job.encrypted_result)
             .bind(&job.result_ephemeral_public_key)
             .bind(&job.result_nonce)
@@ -42,30 +40,25 @@ impl Repository {
             .bind(job.id)
             .execute(db)
             .await
-        {
-            Err(err) => {
+            .map_err(|err| {
                 error!("update_job: updating job: {}", &err);
-                Err(err.into())
-            }
-            Ok(_) => Ok(()),
-        }
+                err.into()
+            })?;
+        Ok(())
     }
 
     pub async fn find_job_by_id(&self, db: &Pool<Postgres>, job_id: Uuid) -> Result<Job, Error> {
         const QUERY: &str = "SELECT * FROM jobs WHERE id = $1";
 
-        match sqlx::query_as::<_, Job>(QUERY)
+        sqlx::query_as::<_, Job>(QUERY)
             .bind(job_id)
             .fetch_optional(db)
             .await
-        {
-            Err(err) => {
+            .map_err(|err| {
                 error!("find_job_by_id: finding job: {}", &err);
-                Err(err.into())
-            }
-            Ok(None) => Err(Error::NotFound("Job not found.".to_string())),
-            Ok(Some(res)) => Ok(res),
-        }
+                err.into()
+            })?
+            .ok_or_else(|| Error::NotFound("Job not found.".into()))
     }
 
     pub async fn find_job_for_agent(
@@ -77,18 +70,15 @@ impl Repository {
             WHERE agent_id = $1 AND encrypted_result IS NULL
             LIMIT 1";
 
-        match sqlx::query_as::<_, Job>(QUERY)
+        sqlx::query_as::<_, Job>(QUERY)
             .bind(agent_id)
             .fetch_optional(db)
             .await
-        {
-            Err(err) => {
+            .map_err(|err| {
                 error!("find_job_for_agent: finding job: {}", &err);
-                Err(err.into())
-            }
-            Ok(None) => Err(Error::NotFound("Job not found.".to_string())),
-            Ok(Some(res)) => Ok(res),
-        }
+                err.into()
+            })?
+            .ok_or_else(|| Error::NotFound("Job not found.".into()))
     }
 
     pub async fn delete_job(&self, db: &Pool<Postgres>, job_id: Uuid) -> Result<(), Error> {

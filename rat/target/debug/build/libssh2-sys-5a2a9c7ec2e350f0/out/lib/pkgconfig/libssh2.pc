@@ -1,0 +1,17 @@
+###########################################################################
+# libssh2 installation details
+###########################################################################
+
+prefix=/workspace/rat/target/debug/build/libssh2-sys-5a2a9c7ec2e350f0/out
+exec_prefix=
+libdir=/workspace/rat/target/debug/build/libssh2-sys-5a2a9c7ec2e350f0/out/lib
+includedir=/workspace/rat/target/debug/build/libssh2-sys-5a2a9c7ec2e350f0/out/include
+
+Name: libssh2
+URL: https://www.libssh2.org/
+Description: Library for SSH-based communication
+Version: 1.9.0_DEV
+Requires.private: 
+Libs: -L${libdir} -lssh2 
+Libs.private: 
+Cflags: -I${includedir}

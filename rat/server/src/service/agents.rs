@@ -28,7 +28,7 @@ impl Service {
         // verify input
         if input.public_prekey_signature.len() != crypto::ED25519_SIGNATURE_SIZE {
             return Err(Error::InvalidArgument(
-                "Agent's public prekey Signature size is not valid".to_string(),
+                "Agent's public prekey Signature size is not valid".into(),
             ));
         }
 
@@ -42,7 +42,7 @@ impl Service {
             .verify(&input.public_prekey, &signature)
             .is_err()
         {
-            return Err(Error::InvalidArgument("Signature is not valid".to_string()));
+            return Err(Error::InvalidArgument("Signature is not valid".into()));
         }
 
         log::debug!("register_agent: agent's public_prekey signature verified");
@@ -51,9 +51,9 @@ impl Service {
             id,
             created_at,
             last_seen_at: created_at,
-            identity_public_key: input.identity_public_key.to_vec(),
-            public_prekey: input.public_prekey.to_vec(),
-            public_prekey_signature: input.public_prekey_signature.to_vec(),
+            identity_public_key: input.identity_public_key.into(),
+            public_prekey: input.public_prekey.into(),
+            public_prekey_signature: input.public_prekey_signature,
         };
 
         self.repo.create_agent(&self.db, &agent).await?;

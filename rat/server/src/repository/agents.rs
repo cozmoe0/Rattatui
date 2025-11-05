@@ -10,7 +10,7 @@ impl Repository {
             (id, created_at, last_seen_at, identity_public_key, public_prekey, public_prekey_signature)
             VALUES ($1, $2, $3, $4, $5, $6)";
 
-        match sqlx::query(QUERY)
+        sqlx::query(QUERY)
             .bind(agent.id)
             .bind(agent.created_at)
             .bind(agent.last_seen_at)
@@ -19,13 +19,11 @@ impl Repository {
             .bind(&agent.public_prekey_signature)
             .execute(db)
             .await
-        {
-            Err(err) => {
+            .map_err(|err| {
                 error!("create_agent: Inserting agent: {}", &err);
-                Err(err.into())
-            }
-            Ok(_) => Ok(()),
-        }
+                err.into()
+            })?;
+        Ok(())
     }
 
     pub async fn update_agent(&self, db: &Pool<Postgres>, agent: &Agent) -> Result<(), Error> {
@@ -33,30 +31,28 @@ impl Repository {
             SET last_seen_at = $1
             WHERE id = $2";
 
-        match sqlx::query(QUERY)
+        sqlx::query(QUERY)
             .bind(agent.last_seen_at)
             .bind(agent.id)
             .execute(db)
             .await
-        {
-            Err(err) => {
+            .map_err(|err| {
                 error!("update_agent: updating agent: {}", &err);
-                Err(err.into())
-            }
-            Ok(_) => Ok(()),
-        }
+                err.into()
+            })?;
+        Ok(())
     }
 
     pub async fn find_all_agents(&self, db: &Pool<Postgres>) -> Result<Vec<Agent>, Error> {
         const QUERY: &str = "SELECT * FROM agents ORDER BY created_at";
 
-        match sqlx::query_as::<_, Agent>(QUERY).fetch_all(db).await {
-            Err(err) => {
+        sqlx::query_as::<_, Agent>(QUERY)
+            .fetch_all(db)
+            .await
+            .map_err(|err| {
                 error!("find_all_agents: finding agents: {}", &err);
-                Err(err.into())
-            }
-            Ok(res) => Ok(res),
-        }
+                err.into()
+            })
     }
 
     pub async fn find_agent_by_id(
@@ -66,17 +62,14 @@ impl Repository {
     ) -> Result<Agent, Error> {
         const QUERY: &str = "SELECT * FROM agents WHERE id = $1";
 
-        match sqlx::query_as::<_, Agent>(QUERY)
+        sqlx::query_as::<_, Agent>(QUERY)
             .bind(agent_id)
             .fetch_optional(db)
             .await
-        {
-            Err(err) => {
+            .map_err(|err| {
                 error!("find_agent_by_id: finding agent: {}", &err);
-                Err(err.into())
-            }
-            Ok(None) => Err(Error::NotFound("Agent not found.".to_string())),
-            Ok(Some(res)) => Ok(res),
-        }
+                err.into()
+            })?
+            .ok_or_else(|| Error::NotFound("Agent not found.".into()))
     }
 }

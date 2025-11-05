@@ -1,0 +1,15 @@
+crypto/pem/pem_lib.c:794:14: warning: variable 'line' set but not used [-Wunused-but-set-variable]
+  794 |     int len, line, ret = 0, end = 0, prev_partial_line_read = 0, partial_line_read = 0;
+      |              ^
+1 warning generated.
+crypto/txt_db/txt_db.c:24:10: warning: variable 'ln' set but not used [-Wunused-but-set-variable]
+   24 |     long ln = 0;
+      |          ^
+1 warning generated.
+crypto/x509/x_name.c:496:9: warning: variable 'l' set but not used [-Wunused-but-set-variable]
+  496 |     int l, i;
+      |         ^
+1 warning generated.
+ar: creating apps/libapps.a
+ar: creating libcrypto.a
+ar: creating libssl.a

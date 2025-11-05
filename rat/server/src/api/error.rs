@@ -1,5 +1,5 @@
 use common::api;
-use std::{collections::HashMap, convert::Infallible};
+use std::collections::HashMap;
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 
@@ -7,64 +7,65 @@ const EXTENSION_KEY_CODE: &str = "code";
 const CODE_NOT_FOUND: &str = "NOT_FOUND";
 const CODE_INTERNAL: &str = "INTERNAL";
 
-impl std::convert::Into<api::Error> for crate::Error {
-    fn into(self) -> api::Error {
-        match self {
-            crate::Error::NotFound(err) => {
-                let mut extensions = HashMap::new();
+impl From<crate::Error> for api::Error {
+    fn from(err: crate::Error) -> Self {
+        match err {
+            crate::Error::NotFound(msg) => {
+                let mut extensions = HashMap::with_capacity(1);
                 extensions.insert(EXTENSION_KEY_CODE.into(), CODE_NOT_FOUND.into());
-
                 api::Error {
-                    message: err.to_string(),
+                    message: msg,
                     extensions: Some(extensions),
                 }
             }
-            crate::Error::Internal(_) => {
-                let mut extensions = HashMap::new();
+            crate::Error::Internal(msg) => {
+                let mut extensions = HashMap::with_capacity(1);
                 extensions.insert(EXTENSION_KEY_CODE.into(), CODE_INTERNAL.into());
-
                 api::Error {
-                    message: self.to_string(),
+                    message: msg,
                     extensions: Some(extensions),
                 }
             }
-            _ => api::Error {
-                message: self.to_string(),
+            crate::Error::InvalidArgument(msg) => api::Error {
+                message: msg,
                 extensions: None,
             },
         }
     }
 }
 
-pub async fn handle_error(rejection: Rejection) -> std::result::Result<impl Reply, Infallible> {
-    let status;
-    let err;
-
-    if rejection.is_not_found() {
-        status = StatusCode::NOT_FOUND;
-        err = crate::Error::NotFound("Route not found.".to_string());
-    } else if let Some(_) = rejection.find::<warp::filters::body::BodyDeserializeError>() {
-        status = StatusCode::BAD_REQUEST;
-        err = crate::Error::InvalidArgument("Invalid Body.".to_string());
-    } else if let Some(_) = rejection.find::<warp::reject::MethodNotAllowed>() {
-        status = StatusCode::METHOD_NOT_ALLOWED;
-        err = crate::Error::InvalidArgument("Invalid HTTP Method.".to_string());
+pub async fn handle_error(rejection: Rejection) -> Result<impl Reply, std::convert::Infallible> {
+    let (status, err) = if rejection.is_not_found() {
+        (
+            StatusCode::NOT_FOUND,
+            crate::Error::NotFound("Route not found.".into()),
+        )
+    } else if rejection.find::<warp::filters::body::BodyDeserializeError>().is_some() {
+        (
+            StatusCode::BAD_REQUEST,
+            crate::Error::InvalidArgument("Invalid Body.".into()),
+        )
+    } else if rejection.find::<warp::reject::MethodNotAllowed>().is_some() {
+        (
+            StatusCode::METHOD_NOT_ALLOWED,
+            crate::Error::InvalidArgument("Invalid HTTP Method.".into()),
+        )
     } else if let Some(e) = rejection.find::<crate::Error>() {
-        status = match e {
-            crate::Error::InvalidArgument(_) => StatusCode::BAD_REQUEST, // 400
-            // Error::AuthenticationRequired => StatusCode::UNAUTHORIZED, // 401
-            // Error::PermissionDenied(_) => StatusCode::FORBIDDEN,       // 403
-            crate::Error::NotFound(_) => StatusCode::NOT_FOUND, // 404
-            // Error::AlreadyExists(_) => StatusCode::CONFLICT,           // 409
-            crate::Error::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR, // 500
+        let status = match e {
+            crate::Error::InvalidArgument(_) => StatusCode::BAD_REQUEST,
+            crate::Error::NotFound(_) => StatusCode::NOT_FOUND,
+            crate::Error::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        err = e.to_owned();
+        (status, e.clone())
     } else {
-        status = StatusCode::INTERNAL_SERVER_ERROR;
-        err = crate::Error::Internal("".to_string());
-    }
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            crate::Error::Internal(String::new()),
+        )
+    };
 
-    let res = api::Response::<()>::err(err.into());
-    let res_json = warp::reply::json(&res);
-    Ok(warp::reply::with_status(res_json, status))
+    Ok(warp::reply::with_status(
+        warp::reply::json(&api::Response::<()>::err(err.into())),
+        status,
+    ))
 }

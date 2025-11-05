@@ -37,11 +37,11 @@ fn main() -> Result<(), anyhow::Error> {
         .setting(clap::AppSettings::VersionlessSubcommands)
         .get_matches();
 
-    let api_client = api::Client::new(config::SERVER_URL.to_string());
+    let api_client = api::Client::new(config::SERVER_URL.into());
 
-    if let Some(_) = cli.subcommand_matches(cli::AGENTS) {
+    if cli.subcommand_matches(cli::AGENTS).is_some() {
         cli::agents::run(&api_client)?;
-    } else if let Some(_) = cli.subcommand_matches(cli::IDENTITY) {
+    } else if cli.subcommand_matches(cli::IDENTITY).is_some() {
         cli::identity::run();
     } else if let Some(matches) = cli.subcommand_matches(cli::EXEC) {
         // we can safely unwrap as the arguments are required

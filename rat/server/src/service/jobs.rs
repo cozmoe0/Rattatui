@@ -42,20 +42,21 @@ impl Service {
 
         // validate input
         if input.encrypted_job_result.len() > super::ENCRYPTED_JOB_RESULT_MAX_SIZE {
-            return Err(Error::InvalidArgument("Result is too large".to_string()));
+            return Err(Error::InvalidArgument("Result is too large".into()));
         }
 
         if input.signature.len() != crypto::ED25519_SIGNATURE_SIZE {
-            return Err(Error::InvalidArgument(
-                "Signature size is not valid".to_string(),
-            ));
+            return Err(Error::InvalidArgument("Signature size is not valid".into()));
         }
 
-        let mut job_result_buffer = input.job_id.as_bytes().to_vec();
-        job_result_buffer.append(&mut agent.id.as_bytes().to_vec());
-        job_result_buffer.append(&mut input.encrypted_job_result.clone());
-        job_result_buffer.append(&mut input.ephemeral_public_key.to_vec());
-        job_result_buffer.append(&mut input.nonce.to_vec());
+        // Pre-allocate buffer with capacity to avoid multiple reallocations
+        let capacity = 16 + 16 + input.encrypted_job_result.len() + 32 + 24;
+        let mut job_result_buffer = Vec::with_capacity(capacity);
+        job_result_buffer.extend_from_slice(input.job_id.as_bytes());
+        job_result_buffer.extend_from_slice(agent.id.as_bytes());
+        job_result_buffer.extend_from_slice(&input.encrypted_job_result);
+        job_result_buffer.extend_from_slice(&input.ephemeral_public_key);
+        job_result_buffer.extend_from_slice(&input.nonce);
 
         let signature = ed25519_dalek::Signature::try_from(&input.signature[0..64])?;
         let agent_identity_public_key =
@@ -65,12 +66,12 @@ impl Service {
             .verify(&job_result_buffer, &signature)
             .is_err()
         {
-            return Err(Error::InvalidArgument("Signature is not valid".to_string()));
+            return Err(Error::InvalidArgument("Signature is not valid".into()));
         }
 
         job.encrypted_result = Some(input.encrypted_job_result);
-        job.result_ephemeral_public_key = Some(input.ephemeral_public_key.to_vec());
-        job.result_nonce = Some(input.nonce.to_vec());
+        job.result_ephemeral_public_key = Some(input.ephemeral_public_key.into());
+        job.result_nonce = Some(input.nonce.into());
         job.result_signature = Some(input.signature);
         self.repo.update_job(&self.db, &job).await
     }
@@ -78,38 +79,39 @@ impl Service {
     pub async fn create_job(&self, input: CreateJob) -> Result<Job, Error> {
         // validate input
         if input.encrypted_job.len() > super::ENCRYPTED_JOB_MAX_SIZE {
-            return Err(Error::InvalidArgument("Job is too large".to_string()));
+            return Err(Error::InvalidArgument("Job is too large".into()));
         }
 
         if input.signature.len() != crypto::ED25519_SIGNATURE_SIZE {
-            return Err(Error::InvalidArgument(
-                "Signature size is not valid".to_string(),
-            ));
+            return Err(Error::InvalidArgument("Signature size is not valid".into()));
         }
 
-        let mut job_buffer = input.id.as_bytes().to_vec();
-        job_buffer.append(&mut input.agent_id.as_bytes().to_vec());
-        job_buffer.append(&mut input.encrypted_job.clone());
-        job_buffer.append(&mut input.ephemeral_public_key.to_vec());
-        job_buffer.append(&mut input.nonce.to_vec());
+        // Pre-allocate buffer with capacity to avoid multiple reallocations
+        let capacity = 16 + 16 + input.encrypted_job.len() + 32 + 24;
+        let mut job_buffer = Vec::with_capacity(capacity);
+        job_buffer.extend_from_slice(input.id.as_bytes());
+        job_buffer.extend_from_slice(input.agent_id.as_bytes());
+        job_buffer.extend_from_slice(&input.encrypted_job);
+        job_buffer.extend_from_slice(&input.ephemeral_public_key);
+        job_buffer.extend_from_slice(&input.nonce);
 
         let signature = ed25519_dalek::Signature::try_from(&input.signature[0..64])?;
 
-        if !self
+        if self
             .config
             .client_identity_public_key
             .verify(&job_buffer, &signature)
-            .is_ok()
+            .is_err()
         {
-            return Err(Error::InvalidArgument("Signature is not valid".to_string()));
+            return Err(Error::InvalidArgument("Signature is not valid".into()));
         }
 
         let new_job = Job {
             id: input.id,
             agent_id: input.agent_id,
             encrypted_job: input.encrypted_job,
-            ephemeral_public_key: input.ephemeral_public_key.to_vec(),
-            nonce: input.nonce.to_vec(),
+            ephemeral_public_key: input.ephemeral_public_key.into(),
+            nonce: input.nonce.into(),
             signature: input.signature,
             encrypted_result: None,
             result_ephemeral_public_key: None,
