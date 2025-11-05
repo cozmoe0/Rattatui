@@ -14,17 +14,17 @@ pub struct Response<T: Serialize> {
 
 impl<T: Serialize> Response<T> {
     pub fn ok(data: T) -> Response<T> {
-        return Response {
+        Response {
             data: Some(data),
             error: None,
-        };
+        }
     }
 
     pub fn err(err: Error) -> Response<()> {
-        return Response::<()> {
+        Response::<()> {
             data: None,
             error: Some(err.into()),
-        };
+        }
     }
 }
 

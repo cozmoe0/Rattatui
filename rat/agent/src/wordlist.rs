@@ -1,3 +1,3 @@
-pub static USERNAMES: &'static [&str] = &["root"];
+pub static USERNAMES: &[&str] = &["root"];
 
-pub static PASSWORDS: &'static [&str] = &["password", "admin", "root"];
+pub static PASSWORDS: &[&str] = &["password", "admin", "root"];

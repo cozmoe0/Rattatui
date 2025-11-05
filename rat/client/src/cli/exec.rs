@@ -21,9 +21,8 @@ pub fn run(api_client: &Client, agent_id: &str, command: &str, conf: Config) -> 
     let agent_id = Uuid::parse_str(agent_id)?;
     let sleep_for = Duration::from_millis(500);
 
-    let mut command_with_args: Vec<String> = command
+    let command_with_args: Vec<String> = command
         .split_whitespace()
-        .into_iter()
         .map(|s| s.to_owned())
         .collect();
 
@@ -31,8 +30,8 @@ pub fn run(api_client: &Client, agent_id: &str, command: &str, conf: Config) -> 
         return Err(Error::Internal("Command is not valid".to_string()));
     }
 
-    let command = command_with_args.remove(0);
-    let args = command_with_args;
+    let command = command_with_args[0].clone();
+    let args = command_with_args[1..].to_vec();
 
     // get agent's info
     let agent = api_client.get_agent(agent_id)?;
@@ -88,24 +87,18 @@ fn encrypt_and_sign_job(
     }
 
     // verify agent's prekey
-    let agent_public_prekey_buffer = agent_public_prekey.to_vec();
     let signature = ed25519_dalek::Signature::try_from(&agent_public_prekey_signature[0..64])?;
-    if agent_identity_public_key
-        .verify(&agent_public_prekey_buffer, &signature)
-        .is_err()
-    {
-        return Err(Error::Internal(
-            "Agent's prekey Signature is not valid".to_string(),
-        ));
-    }
+    agent_identity_public_key
+        .verify(&agent_public_prekey, &signature)
+        .map_err(|_| Error::Internal("Agent's prekey Signature is not valid".to_string()))?;
 
-    let mut rand_generator = rand::rngs::OsRng {};
+    let mut rand_generator = rand::rngs::OsRng;
 
     // generate ephemeral keypair for job encryption
     let mut job_ephemeral_private_key = [0u8; crypto::X25519_PRIVATE_KEY_SIZE];
     rand_generator.fill_bytes(&mut job_ephemeral_private_key);
     let job_ephemeral_public_key = x25519(
-        job_ephemeral_private_key.clone(),
+        job_ephemeral_private_key,
         x25519_dalek::X25519_BASEPOINT_BYTES,
     );
 
@@ -113,7 +106,7 @@ fn encrypt_and_sign_job(
     let mut job_result_ephemeral_private_key = [0u8; crypto::X25519_PRIVATE_KEY_SIZE];
     rand_generator.fill_bytes(&mut job_result_ephemeral_private_key);
     let job_result_ephemeral_public_key = x25519(
-        job_result_ephemeral_private_key.clone(),
+        job_result_ephemeral_private_key,
         x25519_dalek::X25519_BASEPOINT_BYTES,
     );
 
@@ -149,11 +142,14 @@ fn encrypt_and_sign_job(
     let job_id = Uuid::new_v4();
 
     // sign job_id, agent_id, encrypted_job, ephemeral_public_key, nonce
-    let mut buffer_to_sign = job_id.as_bytes().to_vec();
-    buffer_to_sign.append(&mut agent_id.as_bytes().to_vec());
-    buffer_to_sign.append(&mut encrypted_job.clone());
-    buffer_to_sign.append(&mut job_ephemeral_public_key.to_vec());
-    buffer_to_sign.append(&mut nonce.to_vec());
+    let mut buffer_to_sign = Vec::with_capacity(
+        16 + 16 + encrypted_job.len() + 32 + 24
+    );
+    buffer_to_sign.extend_from_slice(job_id.as_bytes());
+    buffer_to_sign.extend_from_slice(agent_id.as_bytes());
+    buffer_to_sign.extend_from_slice(&encrypted_job);
+    buffer_to_sign.extend_from_slice(&job_ephemeral_public_key);
+    buffer_to_sign.extend_from_slice(&nonce);
 
     let identity = ed25519_dalek::ExpandedSecretKey::from(&conf.identity_private_key);
     let signature = identity.sign(&buffer_to_sign, &conf.identity_public_key);
@@ -187,11 +183,14 @@ fn decrypt_and_verify_job_output(
         .result_nonce
         .ok_or(Error::Internal("Job's result nonce is missing".to_string()))?;
 
-    let mut buffer_to_verify = job.id.as_bytes().to_vec();
-    buffer_to_verify.append(&mut job.agent_id.as_bytes().to_vec());
-    buffer_to_verify.append(&mut encrypted_job_result.clone());
-    buffer_to_verify.append(&mut result_ephemeral_public_key.to_vec());
-    buffer_to_verify.append(&mut result_nonce.to_vec());
+    let mut buffer_to_verify = Vec::with_capacity(
+        16 + 16 + encrypted_job_result.len() + 32 + 24
+    );
+    buffer_to_verify.extend_from_slice(job.id.as_bytes());
+    buffer_to_verify.extend_from_slice(job.agent_id.as_bytes());
+    buffer_to_verify.extend_from_slice(&encrypted_job_result);
+    buffer_to_verify.extend_from_slice(&result_ephemeral_public_key);
+    buffer_to_verify.extend_from_slice(&result_nonce);
 
     let result_signature = job.result_signature.ok_or(Error::Internal(
         "Job's result signature is missing".to_string(),
@@ -203,14 +202,9 @@ fn decrypt_and_verify_job_output(
     }
 
     let signature = ed25519_dalek::Signature::try_from(&result_signature[0..64])?;
-    if agent_identity_public_key
+    agent_identity_public_key
         .verify(&buffer_to_verify, &signature)
-        .is_err()
-    {
-        return Err(Error::Internal(
-            "Agent's prekey Signature is not valid".to_string(),
-        ));
-    }
+        .map_err(|_| Error::Internal("Agent's signature is not valid".to_string()))?;
 
     // key exchange with public_prekey & keypair for job encryption
     let mut shared_secret = x25519(job_ephemeral_private_key, result_ephemeral_public_key);

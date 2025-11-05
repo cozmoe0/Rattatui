@@ -11,7 +11,13 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
+        match self {
+            Error::Internal(msg) => write!(f, "Internal error: {}", msg),
+            Error::Api(msg) => write!(f, "API error: {}", msg),
+            Error::Io(err) => write!(f, "IO error: {}", err),
+            Error::Ssh(err) => write!(f, "SSH error: {}", err),
+            Error::Zip(err) => write!(f, "ZIP error: {}", err),
+        }
     }
 }
 

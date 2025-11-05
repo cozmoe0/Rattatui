@@ -51,22 +51,24 @@ impl Service {
             ));
         }
 
-        let mut job_result_buffer = input.job_id.as_bytes().to_vec();
-        job_result_buffer.append(&mut agent.id.as_bytes().to_vec());
-        job_result_buffer.append(&mut input.encrypted_job_result.clone());
-        job_result_buffer.append(&mut input.ephemeral_public_key.to_vec());
-        job_result_buffer.append(&mut input.nonce.to_vec());
+        let mut job_result_buffer = Vec::with_capacity(
+            16 + 16 + input.encrypted_job_result.len() + 32 + 24
+        );
+        job_result_buffer.extend_from_slice(input.job_id.as_bytes());
+        job_result_buffer.extend_from_slice(agent.id.as_bytes());
+        job_result_buffer.extend_from_slice(&input.encrypted_job_result);
+        job_result_buffer.extend_from_slice(&input.ephemeral_public_key);
+        job_result_buffer.extend_from_slice(&input.nonce);
 
         let signature = ed25519_dalek::Signature::try_from(&input.signature[0..64])?;
         let agent_identity_public_key =
-            ed25519_dalek::PublicKey::from_bytes(&agent.identity_public_key)?;
+            ed25519_dalek::PublicKey::from_bytes(
+                agent.identity_public_key.as_slice().try_into()?
+            )?;
 
-        if agent_identity_public_key
+        agent_identity_public_key
             .verify(&job_result_buffer, &signature)
-            .is_err()
-        {
-            return Err(Error::InvalidArgument("Signature is not valid".to_string()));
-        }
+            .map_err(|_| Error::InvalidArgument("Signature is not valid".to_string()))?;
 
         job.encrypted_result = Some(input.encrypted_job_result);
         job.result_ephemeral_public_key = Some(input.ephemeral_public_key.to_vec());
@@ -87,22 +89,21 @@ impl Service {
             ));
         }
 
-        let mut job_buffer = input.id.as_bytes().to_vec();
-        job_buffer.append(&mut input.agent_id.as_bytes().to_vec());
-        job_buffer.append(&mut input.encrypted_job.clone());
-        job_buffer.append(&mut input.ephemeral_public_key.to_vec());
-        job_buffer.append(&mut input.nonce.to_vec());
+        let mut job_buffer = Vec::with_capacity(
+            16 + 16 + input.encrypted_job.len() + 32 + 24
+        );
+        job_buffer.extend_from_slice(input.id.as_bytes());
+        job_buffer.extend_from_slice(input.agent_id.as_bytes());
+        job_buffer.extend_from_slice(&input.encrypted_job);
+        job_buffer.extend_from_slice(&input.ephemeral_public_key);
+        job_buffer.extend_from_slice(&input.nonce);
 
         let signature = ed25519_dalek::Signature::try_from(&input.signature[0..64])?;
 
-        if !self
-            .config
+        self.config
             .client_identity_public_key
             .verify(&job_buffer, &signature)
-            .is_ok()
-        {
-            return Err(Error::InvalidArgument("Signature is not valid".to_string()));
-        }
+            .map_err(|_| Error::InvalidArgument("Signature is not valid".to_string()))?;
 
         let new_job = Job {
             id: input.id,

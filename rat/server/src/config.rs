@@ -1,4 +1,5 @@
 use crate::Error;
+use base64::{Engine as _, engine::general_purpose};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -27,11 +28,14 @@ impl Config {
         let client_identity_key_str = std::env::var(ENV_CLIENT_IDENTITY_PUBLIC_KEY)
             .ok()
             .unwrap_or(String::new());
-        let client_identity_public_key_bytes = base64::decode(&client_identity_key_str)
+        let client_identity_public_key_bytes = general_purpose::STANDARD.decode(&client_identity_key_str)
             .map_err(|err| Error::Internal(err.to_string()))?;
 
         let client_identity_public_key =
-            ed25519_dalek::PublicKey::from_bytes(&client_identity_public_key_bytes)?;
+            ed25519_dalek::PublicKey::from_bytes(
+                client_identity_public_key_bytes.as_slice().try_into()
+                    .map_err(|_| Error::Internal("Invalid key length".to_string()))?
+            )?;
 
         Ok(Config {
             port,

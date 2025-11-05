@@ -32,6 +32,12 @@ impl std::convert::From<base64::DecodeError> for Error {
     }
 }
 
+impl std::convert::From<std::array::TryFromSliceError> for Error {
+    fn from(err: std::array::TryFromSliceError) -> Self {
+        Error::Internal(err.to_string())
+    }
+}
+
 impl std::convert::From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Error::Internal(err.to_string())

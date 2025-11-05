@@ -1,0 +1,9 @@
+prefix=/workspace/rat/target/release/build/openssl-sys-e6e1a8ff129c3c0b/out/openssl-build/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include 
+
+Name: OpenSSL
+Description: Secure Sockets Layer and cryptography libraries and tools
+Version: 3.5.4
+Requires: libssl libcrypto

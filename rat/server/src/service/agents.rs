@@ -38,12 +38,9 @@ impl Service {
 
         log::debug!("register_agent: input is valid");
 
-        if agent_identity_public_key
+        agent_identity_public_key
             .verify(&input.public_prekey, &signature)
-            .is_err()
-        {
-            return Err(Error::InvalidArgument("Signature is not valid".to_string()));
-        }
+            .map_err(|_| Error::InvalidArgument("Signature is not valid".to_string()))?;
 
         log::debug!("register_agent: agent's public_prekey signature verified");
 

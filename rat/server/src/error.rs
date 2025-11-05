@@ -38,3 +38,9 @@ impl std::convert::From<ed25519_dalek::SignatureError> for Error {
         Error::Internal(err.to_string())
     }
 }
+
+impl std::convert::From<std::array::TryFromSliceError> for Error {
+    fn from(err: std::array::TryFromSliceError) -> Self {
+        Error::Internal(err.to_string())
+    }
+}

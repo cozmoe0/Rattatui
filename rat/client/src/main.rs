@@ -1,4 +1,4 @@
-use clap::{App, Arg, SubCommand};
+use clap::{Parser, Subcommand};
 
 mod api;
 mod cli;
@@ -9,46 +9,48 @@ pub use error::Error;
 
 use crate::config::Config;
 
-fn main() -> Result<(), anyhow::Error> {
-    let cli = App::new(clap::crate_name!())
-        .version(clap::crate_version!())
-        .about(clap::crate_description!())
-        .subcommand(SubCommand::with_name(cli::AGENTS).about("List all agents"))
-        .subcommand(SubCommand::with_name(cli::IDENTITY).about("Generates a new identity keypair"))
-        .subcommand(
-            SubCommand::with_name(cli::EXEC)
-                .about("Execute a command")
-                .arg(
-                    Arg::with_name("agent")
-                        .short("a")
-                        .long("agent")
-                        .help("The agent id to execute the command on")
-                        .takes_value(true)
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("command")
-                        .help("The command to execute, with its arguments.")
-                        .required(true)
-                        .index(1),
-                ),
-        )
-        .setting(clap::AppSettings::ArgRequiredElseHelp)
-        .setting(clap::AppSettings::VersionlessSubcommands)
-        .get_matches();
+#[derive(Parser)]
+#[command(name = env!("CARGO_PKG_NAME"))]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(about = env!("CARGO_PKG_DESCRIPTION"), long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
 
+#[derive(Subcommand)]
+enum Commands {
+    /// List all agents
+    Agents,
+    /// Generates a new identity keypair
+    Identity,
+    /// Execute a command
+    Exec {
+        /// The agent id to execute the command on
+        #[arg(short, long)]
+        agent: String,
+        
+        /// The command to execute, with its arguments
+        command: String,
+    },
+}
+
+fn main() -> Result<(), anyhow::Error> {
+    let cli = Cli::parse();
+    
     let api_client = api::Client::new(config::SERVER_URL.to_string());
 
-    if let Some(_) = cli.subcommand_matches(cli::AGENTS) {
-        cli::agents::run(&api_client)?;
-    } else if let Some(_) = cli.subcommand_matches(cli::IDENTITY) {
-        cli::identity::run();
-    } else if let Some(matches) = cli.subcommand_matches(cli::EXEC) {
-        // we can safely unwrap as the arguments are required
-        let agent_id = matches.value_of("agent").unwrap();
-        let command = matches.value_of("command").unwrap();
-        let conf = Config::load()?;
-        cli::exec::run(&api_client, agent_id, command, conf)?;
+    match cli.command {
+        Commands::Agents => {
+            cli::agents::run(&api_client)?;
+        }
+        Commands::Identity => {
+            cli::identity::run();
+        }
+        Commands::Exec { agent, command } => {
+            let conf = Config::load()?;
+            cli::exec::run(&api_client, &agent, &command, conf)?;
+        }
     }
 
     Ok(())
