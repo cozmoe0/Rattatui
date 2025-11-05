@@ -3,8 +3,8 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use ssh2::{Channel, Session};
 use std::fs;
-use std::io::Write;
-use std::{fmt, io::Read, net::TcpStream, path::PathBuf};
+use std::io::{self, BufReader, Read, Write};
+use std::{fmt, net::TcpStream, path::{Path, PathBuf}};
 
 #[derive(Debug, Clone, Copy)]
 enum Platform {
@@ -67,7 +67,7 @@ pub fn spread(install_dir: PathBuf, host_port: &str) -> Result<(), crate::Error>
     Ok(())
 }
 
-fn upload_agent(ssh: &Session, agent_path: &PathBuf) -> Result<String, crate::Error> {
+fn upload_agent(ssh: &Session, agent_path: &Path) -> Result<String, crate::Error> {
     let rand_name: String = thread_rng()
         .sample_iter(&Alphanumeric)
         .take(32)
@@ -78,12 +78,17 @@ fn upload_agent(ssh: &Session, agent_path: &PathBuf) -> Result<String, crate::Er
     let mut remote_path = PathBuf::from("/tmp");
     remote_path.push(&hidden_rand_name);
 
-    let agent_data = fs::read(agent_path)?;
+    let file = fs::File::open(agent_path)?;
+    let mut reader = BufReader::new(file);
+    let file_size = reader.get_ref().metadata()?.len();
 
-    println!("size: {}", agent_data.len());
+    println!("size: {}", file_size);
 
-    let mut channel = ssh.scp_send(&remote_path, 0o700, agent_data.len() as u64, None)?;
-    channel.write_all(&agent_data)?;
+    let mut channel = ssh.scp_send(&remote_path, 0o700, file_size, None)?;
+    io::copy(&mut reader, &mut channel)?;
+    channel.send_eof()?;
+    channel.wait_eof()?;
+    channel.wait_close()?;
 
     Ok(remote_path.display().to_string())
 }
@@ -91,7 +96,7 @@ fn upload_agent(ssh: &Session, agent_path: &PathBuf) -> Result<String, crate::Er
 fn execute_remote_agent(ssh: &Session, remote_path: &str) -> Result<(), crate::Error> {
     let mut channel_exec = ssh.channel_session()?;
     channel_exec.exec(&remote_path)?;
-    let _ = consume_stdio(&mut channel_exec);
+    let _ = consume_stdio(&mut channel_exec)?;
 
     Ok(())
 }
@@ -113,7 +118,7 @@ fn identify_platform(ssh: &Session) -> Result<Platform, crate::Error> {
     let mut channel = ssh.channel_session()?;
     channel.exec("uname -a")?;
 
-    let (stdout, _) = consume_stdio(&mut channel);
+    let (stdout, _) = consume_stdio(&mut channel)?;
     let stdout = stdout.trim();
 
     if stdout.contains("Linux") {
@@ -137,15 +142,12 @@ fn identify_platform(ssh: &Session) -> Result<Platform, crate::Error> {
     }
 }
 
-fn consume_stdio(channel: &mut Channel) -> (String, String) {
+fn consume_stdio(channel: &mut Channel) -> Result<(String, String), crate::Error> {
     let mut stdout = String::new();
-    channel.read_to_string(&mut stdout).unwrap();
+    channel.read_to_string(&mut stdout)?;
 
     let mut stderr = String::new();
-    channel.stderr().read_to_string(&mut stderr).unwrap();
+    channel.stderr().read_to_string(&mut stderr)?;
 
-    // eprintln!("stdout: {}", stdout);
-    // eprintln!("stderr: {}", stderr);
-
-    (stdout, stderr)
+    Ok((stdout, stderr))
 }

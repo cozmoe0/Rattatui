@@ -89,25 +89,12 @@ pub fn run(api_client: &ureq::Agent, conf: config::Config) -> ! {
 }
 
 fn execute_command(command: String, args: Vec<String>) -> String {
-    let mut ret = String::new();
-
-    let output = match Command::new(command).args(&args).output() {
-        Ok(output) => output,
-        Err(err) => {
-            log::debug!("Error executing command: {}", err);
-            return ret;
-        }
-    };
-
-    ret = match String::from_utf8(output.stdout) {
-        Ok(stdout) => stdout,
-        Err(err) => {
-            log::debug!("Error converting command's output to String: {}", err);
-            return ret;
-        }
-    };
-
-    return ret;
+    Command::new(command)
+        .args(&args)
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .unwrap_or_default()
 }
 
 fn decrypt_and_verify_job(
@@ -122,11 +109,18 @@ fn decrypt_and_verify_job(
     }
 
     // verify job_id, agent_id, encrypted_job, ephemeral_public_key, nonce
-    let mut buffer_to_verify = job.id.as_bytes().to_vec();
-    buffer_to_verify.append(&mut conf.agent_id.as_bytes().to_vec());
-    buffer_to_verify.append(&mut job.encrypted_job.clone());
-    buffer_to_verify.append(&mut job.ephemeral_public_key.to_vec());
-    buffer_to_verify.append(&mut job.nonce.to_vec());
+    let mut buffer_to_verify = Vec::with_capacity(
+        job.id.as_bytes().len()
+            + conf.agent_id.as_bytes().len()
+            + job.encrypted_job.len()
+            + job.ephemeral_public_key.len()
+            + job.nonce.len(),
+    );
+    buffer_to_verify.extend_from_slice(job.id.as_bytes());
+    buffer_to_verify.extend_from_slice(conf.agent_id.as_bytes());
+    buffer_to_verify.extend_from_slice(&job.encrypted_job);
+    buffer_to_verify.extend_from_slice(&job.ephemeral_public_key);
+    buffer_to_verify.extend_from_slice(&job.nonce);
 
     let signature = ed25519_dalek::Signature::try_from(&job.signature[0..64])?;
     if conf
@@ -172,13 +166,11 @@ fn encrypt_and_sign_job_result(
     // generate ephemeral keypair for job result encryption
     let mut ephemeral_private_key = [0u8; crypto::X25519_PRIVATE_KEY_SIZE];
     rand_generator.fill_bytes(&mut ephemeral_private_key);
-    let ephemeral_public_key = x25519(
-        ephemeral_private_key.clone(),
-        x25519_dalek::X25519_BASEPOINT_BYTES,
-    );
+    let ephemeral_public_key = x25519(ephemeral_private_key, x25519_dalek::X25519_BASEPOINT_BYTES);
 
     // key exchange for job result encryption
     let mut shared_secret = x25519(ephemeral_private_key, job_result_ephemeral_public_key);
+    ephemeral_private_key.zeroize();
 
     // generate nonce
     let mut nonce = [0u8; crypto::XCHACHA20_POLY1305_NONCE_SIZE];
@@ -202,11 +194,18 @@ fn encrypt_and_sign_job_result(
     key.zeroize();
 
     // sign job_id, agent_id, encrypted_job_result, result_ephemeral_public_key, result_nonce
-    let mut buffer_to_sign = job_id.as_bytes().to_vec();
-    buffer_to_sign.append(&mut conf.agent_id.as_bytes().to_vec());
-    buffer_to_sign.append(&mut encrypted_job_result.clone());
-    buffer_to_sign.append(&mut ephemeral_public_key.to_vec());
-    buffer_to_sign.append(&mut nonce.to_vec());
+    let mut buffer_to_sign = Vec::with_capacity(
+        job_id.as_bytes().len()
+            + conf.agent_id.as_bytes().len()
+            + encrypted_job_result.len()
+            + ephemeral_public_key.len()
+            + nonce.len(),
+    );
+    buffer_to_sign.extend_from_slice(job_id.as_bytes());
+    buffer_to_sign.extend_from_slice(conf.agent_id.as_bytes());
+    buffer_to_sign.extend_from_slice(&encrypted_job_result);
+    buffer_to_sign.extend_from_slice(&ephemeral_public_key);
+    buffer_to_sign.extend_from_slice(&nonce);
 
     let identity = ed25519_dalek::ExpandedSecretKey::from(&conf.identity_private_key);
     let signature = identity.sign(&buffer_to_sign, &conf.identity_public_key);

@@ -1,5 +1,5 @@
 use crate::config;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, fs, io};
 
 pub fn install() -> Result<PathBuf, crate::Error> {
@@ -22,7 +22,7 @@ pub fn install() -> Result<PathBuf, crate::Error> {
                 install_dir.display()
             );
 
-            extract_bundle(install_dir.clone(), bundle)?;
+            extract_bundle(&install_dir, &bundle)?;
         } else {
             println!("bundle.zip NOT found");
         }
@@ -31,13 +31,8 @@ pub fn install() -> Result<PathBuf, crate::Error> {
     Ok(install_dir)
 }
 
-fn extract_bundle(install_dir: PathBuf, bundle: PathBuf) -> Result<(), crate::Error> {
-    let mut dist_bundle = install_dir.clone();
-    dist_bundle.push(&bundle);
-
-    fs::copy(&bundle, &dist_bundle)?;
-
-    let zip_file = fs::File::open(&dist_bundle)?;
+fn extract_bundle(install_dir: &Path, bundle: &Path) -> Result<(), crate::Error> {
+    let zip_file = fs::File::open(bundle)?;
     let mut zip_archive = zip::ZipArchive::new(zip_file)?;
 
     for i in 0..zip_archive.len() {
@@ -46,11 +41,27 @@ fn extract_bundle(install_dir: PathBuf, bundle: PathBuf) -> Result<(), crate::Er
             Some(path) => path.to_owned(),
             None => continue,
         };
-        let mut dist_path = install_dir.clone();
-        dist_path.push(dist_filename);
+        let dist_path = install_dir.join(dist_filename);
+
+        if archive_file.is_dir() {
+            fs::create_dir_all(&dist_path)?;
+            continue;
+        }
+
+        if let Some(parent) = dist_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
 
         let mut dist_file = fs::File::create(&dist_path)?;
         io::copy(&mut archive_file, &mut dist_file)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(mode) = archive_file.unix_mode() {
+                fs::set_permissions(&dist_path, fs::Permissions::from_mode(mode))?;
+            }
+        }
     }
 
     Ok(())
